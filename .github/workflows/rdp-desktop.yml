@@ -16,6 +16,9 @@ on:
 
 jobs:
   build:
+    # GitHub validates the reusable workflow's release jobs even when skipped.
+    permissions:
+      contents: write
     uses: ./.github/workflows/flutter-build.yml
     with:
       upload-artifact: false
