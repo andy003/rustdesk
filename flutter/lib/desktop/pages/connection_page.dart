@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/connection_page_title.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
+import 'package:flutter_hbb/desktop/widgets/rdp_connection_dialog.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher_string.dart';
@@ -591,6 +592,12 @@ class _ConnectionPageState extends State<ConnectionPage>
                                   context: context,
                                   position: RelativeRect.fromLTRB(x, y, x, y),
                                   items: [
+                                    if (isLinux)
+                                      (
+                                        'RDP',
+                                        () =>
+                                            showRdpConnectionDialog(this.context)
+                                      ),
                                     (
                                       'Transfer file',
                                       () => onConnect(isFileTransfer: true)

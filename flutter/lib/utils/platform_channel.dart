@@ -16,6 +16,19 @@ class RdPlatformChannel {
   final MethodChannel _hostMethodChannel =
       MethodChannel("org.rustdesk.rustdesk/host");
 
+  Future<void> connectRdp({
+    required String host,
+    required int port,
+    required String username,
+    required String password,
+  }) =>
+      _hostMethodChannel.invokeMethod('connectRdp', {
+        'host': host,
+        'port': port,
+        'username': username,
+        'password': password,
+      });
+
   /// Bump the position of the mouse cursor, if applicable
   Future<bool> bumpMouse({required int dx, required int dy}) async {
     // No debug output; this call is too chatty.

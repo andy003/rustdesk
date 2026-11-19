@@ -12,6 +12,9 @@ on:
       publish-update-metadata:
         type: boolean
         default: false
+      rdp-desktop-only:
+        type: boolean
+        default: false
 
 # NOTE: F-Droid builder script 'flutter/build_fdroid.sh' reads environment
 # variables from this workflow!
@@ -100,6 +103,7 @@ jobs:
         run: python res/update/generate_update_metadata.py check-key
 
   generate-sbom:
+    if: ${{ !inputs.rdp-desktop-only }}
     needs: [validate-update-metadata-keys]
     runs-on: ubuntu-latest
 
@@ -407,11 +411,12 @@ jobs:
           path: "./rustdesk"
 
       - name: Upload unsigned
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: env.UPLOAD_ARTIFACT == 'true' || inputs.rdp-desktop-only
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rustdesk-unsigned-windows-${{ matrix.job.arch }}
           path: rustdesk
+          if-no-files-found: error
 
       - name: Sign rustdesk files
         if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
@@ -581,6 +586,7 @@ jobs:
 
   # The fallback for the flutter version, we use Sciter for 32bit Windows.
   build-for-windows-sciter:
+    if: ${{ !inputs.rdp-desktop-only }}
     name: ${{ matrix.job.target }} (${{ matrix.job.os }})
     needs: [validate-update-metadata-keys]
     runs-on: ${{ matrix.job.os }}
@@ -915,6 +921,7 @@ jobs:
 
 
   build-for-macOS:
+    if: ${{ !inputs.rdp-desktop-only }}
     name: ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
     needs: [generate-bridge]
@@ -1426,6 +1433,7 @@ jobs:
           files: rustdesk-${{ env.VERSION }}-unsigned.tar.gz
 
   build-rustdesk-android:
+    if: ${{ !inputs.rdp-desktop-only }}
     needs: [generate-bridge]
     name: build rustdesk android apk ${{ matrix.job.target }}
     runs-on: ${{ matrix.job.os }}
@@ -2068,6 +2076,7 @@ jobs:
                clang \
                cmake \
                curl \
+               freerdp2-dev \
                gcc \
                git \
                g++ \
@@ -2184,6 +2193,7 @@ jobs:
             export CARGO_INCREMENTAL=0
             export DEB_ARCH=${{ matrix.job.deb_arch }}
             python3 ./build.py --flutter --skip-cargo
+            test -s /workspace/flutter/build/linux/${{ matrix.job.arch == 'aarch64' && 'arm64' || 'x64' }}/release/bundle/lib/librustdesk_rdp.so || exit 1
             if [[ "${{ matrix.job.arch }}" == "x86_64" && "${{ inputs.upload-artifact }}" == "false" ]]; then
               pushd /workspace/flutter
               flutter test --no-pub --timeout 60s || exit 1
@@ -2233,10 +2243,11 @@ jobs:
 
       - name: Upload deb
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: env.UPLOAD_ARTIFACT == 'true'
+        if: env.UPLOAD_ARTIFACT == 'true' || (inputs.rdp-desktop-only && matrix.job.arch == 'x86_64')
         with:
           name: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.deb
           path: rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.deb
+          if-no-files-found: error
 
       # only x86_64 for arch since we can not find newest arm64 docker image to build
       # old arch image does not make sense for arch since it is "arch" which always update to date
@@ -2272,6 +2283,7 @@ jobs:
   # old for it. A separate job rather than a matrix entry of build-rustdesk-linux: appimage and
   # flatpak need that job, and a failure here must not skip them.
   build-rustdesk-linux-drm:
+    if: ${{ !inputs.rdp-desktop-only }}
     needs: [generate-bridge]
     name: build rustdesk linux drm x86_64
     runs-on: ubuntu-22.04
@@ -2394,6 +2406,7 @@ jobs:
                clang \
                cmake \
                curl \
+               freerdp2-dev \
                gcc \
                git \
                g++ \

@@ -1,0 +1,22 @@
+name: RDP desktop builds
+
+on:
+  push:
+    paths:
+      - ".github/workflows/rdp-desktop.yml"
+      - ".github/workflows/flutter-build.yml"
+      - "build.py"
+      - "flutter/lib/desktop/pages/connection_page.dart"
+      - "flutter/lib/desktop/widgets/rdp_connection_dialog.dart"
+      - "flutter/lib/utils/platform_channel.dart"
+      - "flutter/linux/CMakeLists.txt"
+      - "flutter/linux/my_application.cc"
+      - "flutter/linux/rdp_*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/flutter-build.yml
+    with:
+      upload-artifact: false
+      rdp-desktop-only: true

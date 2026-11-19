@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include "bump_mouse.h"
+#include "rdp_channel.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -242,6 +243,7 @@ MyApplication* my_application_new() {
 
 void host_channel_call_handler(FlMethodChannel* channel, FlMethodCall* method_call, gpointer user_data)
 {
+  if (handle_rdp_call(GTK_APPLICATION(user_data), method_call)) return;
   if (strcmp(fl_method_call_get_name(method_call), "bumpMouse") == 0) {
     FlValue *args = fl_method_call_get_args(method_call);
 

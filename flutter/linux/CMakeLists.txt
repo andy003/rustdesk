@@ -129,6 +129,15 @@ target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 target_link_libraries(${BINARY_NAME} PRIVATE ${CMAKE_DL_LIBS})
 # target_link_libraries(${BINARY_NAME} PRIVATE librustdesk)
 
+target_sources(${BINARY_NAME} PRIVATE "rdp_channel.cc")
+pkg_check_modules(FREERDP QUIET IMPORTED_TARGET freerdp2>=2.2 winpr2>=2.2)
+if(FREERDP_FOUND)
+  find_package(Threads REQUIRED)
+  add_library(rustdesk_rdp MODULE "rdp_session.cc")
+  apply_standard_settings(rustdesk_rdp)
+  target_link_libraries(rustdesk_rdp PRIVATE PkgConfig::GTK PkgConfig::FREERDP Threads::Threads)
+endif()
+
 # Wayland support for keyboard shortcuts inhibit
 if(HAS_KEYBOARD_SHORTCUTS_INHIBIT)
   target_compile_definitions(${BINARY_NAME} PRIVATE HAS_KEYBOARD_SHORTCUTS_INHIBIT)
@@ -171,6 +180,11 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
+
+if(TARGET rustdesk_rdp)
+  install(TARGETS rustdesk_rdp LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
