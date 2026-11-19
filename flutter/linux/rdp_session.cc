@@ -344,6 +344,17 @@ void Session::Run(const std::string& host, unsigned port, std::string username,
       std::lock_guard<std::mutex> lock(mutex_);
       connected_ = !stopping_;
     }
+    // Request the first desktop image even if the window has not received
+    // input.
+    auto* gdi = client->context->gdi;
+    const RECTANGLE_16 desktop{0, 0, static_cast<UINT16>(gdi->width - 1),
+                               static_cast<UINT16>(gdi->height - 1)};
+    if (freerdp_settings_get_bool(client->settings, FreeRDP_RefreshRect) &&
+        client->update->RefreshRect &&
+        !client->update->RefreshRect(client->context, 1, &desktop)) {
+      Finish("Could not request the remote desktop.");
+      return;
+    }
     while (!freerdp_shall_disconnect(client.get())) {
       if (paint_pending_) {
         paint_pending_ = false;
