@@ -2105,6 +2105,10 @@ jobs:
             RUSTDESK_ACCOUNT_BOOTSTRAP_URL: ${{ toJSON(inputs.account-bootstrap-url) }}
           shell: /bin/bash
           install: |
+            if [ "${{ inputs.desktop-packages-only }}" = "true" ]; then
+              # Use the runner's archive mirror to avoid Bionic index download timeouts.
+              sed -i 's|http://archive.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+            fi
             apt-get update -y
             echo -e "installing deps"
             apt-get install -y \
