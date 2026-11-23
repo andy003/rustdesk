@@ -3870,7 +3870,7 @@ impl LoginConfigHandler {
             avatar,
             ..Default::default()
         };
-        if self.skips_saved_password() {
+        if self.requests_approval() {
             lr.password.clear();
         }
         match self.conn_type {
@@ -3949,7 +3949,7 @@ impl LoginConfigHandler {
     }
 
     pub fn get_conn_token(&self) -> Option<String> {
-        if self.password.is_empty() {
+        if self.password.is_empty() || self.requires_manual_password() {
             return None;
         }
         serde_json::to_string(&ConnToken {
@@ -4694,6 +4694,15 @@ pub async fn handle_hash(
             return false;
         }
     }
+    if lc.read().unwrap().requires_manual_password() {
+        let is_terminal_admin = lc.read().unwrap().is_terminal_admin;
+        if is_terminal_admin {
+            interface.msgbox("terminal-admin-login-password", "", "", "");
+        } else {
+            interface.msgbox("input-password", "Password Required", "", "");
+        }
+        return true;
+    }
     // last password
     let mut password = lc.read().unwrap().password.clone();
     // preset password
@@ -4870,6 +4879,9 @@ pub async fn handle_login_from_ui(
     trust: &mut crate::trusted_devices::client::Session,
     peer: &mut Stream,
 ) -> ResultType<()> {
+    if password.is_empty() && lc.read().unwrap().requires_manual_password() {
+        bail!("Password Required");
+    }
     let mut hash_password = if password.is_empty() {
         let mut password2 = lc.read().unwrap().password.clone();
         if password2.is_empty() {

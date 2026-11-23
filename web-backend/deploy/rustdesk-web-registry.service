@@ -1,0 +1,17 @@
+[Unit]
+Description=Publish RustDesk device IDs and public keys to the account service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/rustdesk-web/settings.env
+ExecStart=/usr/bin/python3 /opt/rustdesk-web/app/deploy/publish_registry.py ${RUSTDESK_WEB_HBBS_SOURCE} ${RUSTDESK_WEB_HBBS_DATABASE}
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/rustdesk-web-registrations
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true

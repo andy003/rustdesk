@@ -1,0 +1,17 @@
+name: CCROS desktop packages
+
+on:
+  push:
+    branches:
+      - codex/ccros-desktop
+
+jobs:
+  package:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/flutter-build.yml
+    with:
+      upload-artifact: false
+      rdp-desktop-only: true
+      desktop-packages-only: true
+      account-bootstrap-url: https://www.ccrosrobot.com/rustdesk

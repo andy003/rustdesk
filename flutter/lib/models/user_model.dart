@@ -20,10 +20,13 @@ class UserModel {
   final RxString avatar = ''.obs;
   final RxBool isAdmin = false.obs;
   final RxString networkError = ''.obs;
+  final RxString deviceBindingError = ''.obs;
   // True when networkError carries a server-reported error rather than a
   // connectivity failure; netWorkErrorWidget hides the network tip then.
   final RxBool networkErrorFromServer = false.obs;
   bool get isLogin => userName.isNotEmpty;
+  bool get requireDevicePassword =>
+      isLogin && getLocalUserInfo()?['require_device_password'] == true;
   String get displayNameOrUserName =>
       displayName.value.trim().isEmpty ? userName.value : displayName.value;
   String get accountLabelWithHandle {
@@ -97,6 +100,9 @@ class UserModel {
       }
 
       final user = UserPayload.fromJson(data);
+      if (token != bind.mainGetLocalOption(key: 'access_token')) return;
+      await _applyManagedNetwork(url, data['managed_network']);
+      if (token != bind.mainGetLocalOption(key: 'access_token')) return;
       _parseAndUpdateUser(user);
     } catch (e) {
       debugPrint('Failed to refreshCurrentUser: $e');
@@ -143,6 +149,7 @@ class UserModel {
       await gFFI.groupModel.reset();
     }
     userName.value = '';
+    deviceBindingError.value = '';
     displayName.value = '';
     avatar.value = '';
   }
@@ -161,10 +168,74 @@ class UserModel {
 
   // update ab and group status
   static Future<void> updateOtherModels() async {
+    await gFFI.userModel._bindCurrentDevice();
     await Future.wait([
       gFFI.abModel.pullAb(force: ForcePullAb.listAndCurrent, quiet: false),
       gFFI.groupModel.pull()
     ]);
+  }
+
+  Future<void> _applyManagedNetwork(String server, Object? network) async {
+    if (server.isEmpty || server != http.managedAccountServer) return;
+    final request = jsonEncode([server, network]);
+    final error = await bind.mainGetCommon(key: 'apply-managed-network:$request');
+    if (error.isNotEmpty) {
+      throw RequestException(0, 'Invalid managed network configuration');
+    }
+  }
+
+  Future<void> _bindCurrentDevice() async {
+    if (isWeb || !isLogin || getLocalUserInfo()?['device_binding'] != true) return;
+    deviceBindingError.value = '';
+    try {
+      final server = await bind.mainGetApiServer();
+      final token = bind.mainGetLocalOption(key: 'access_token');
+      final headers = getHttpHeaders()..['Content-Type'] = 'application/json';
+      Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+        final response = await http.post(Uri.parse('$server/api/device-binding$path'),
+            headers: headers, body: jsonEncode(body));
+        final data = jsonDecode(decode_http_response(response)) as Map<String, dynamic>;
+        if (response.statusCode != 200) {
+          throw RequestException(response.statusCode, data['error'] ?? 'Could not add this device to the account');
+        }
+        return data;
+      }
+
+      final deviceInfo = jsonDecode(bind.mainGetLoginDeviceInfo()) as Map<String, dynamic>;
+      final attempts = server == http.managedAccountServer ? 8 : 1;
+      for (var attempt = 1; attempt <= attempts; attempt++) {
+        if (token != bind.mainGetLocalOption(key: 'access_token')) return;
+        try {
+          final id = await bind.mainGetMyId();
+          final challenge =
+              (await post('/challenge', {'id': id}))['challenge'] as String;
+          final proof = await bind.mainGetCommon(key: 'sign-account-device:$challenge');
+          if (proof.startsWith('error:')) {
+            throw RequestException(0, proof.substring('error:'.length));
+          }
+          if (token != bind.mainGetLocalOption(key: 'access_token')) return;
+          await post('', {
+            'id': id,
+            'challenge': challenge,
+            'signature': proof,
+            'name': deviceInfo['name'],
+            'os': deviceInfo['os'],
+          });
+          return;
+        } on RequestException catch (error) {
+          if (attempt == attempts ||
+              error.cause != 'Device has not registered with the ID server') {
+            rethrow;
+          }
+          await Future.delayed(const Duration(seconds: 2));
+        }
+      }
+    } on RequestException catch (error) {
+      deviceBindingError.value = error.cause;
+    } catch (error) {
+      debugPrint('Failed to bind account device: ${error.runtimeType}');
+      deviceBindingError.value = 'Could not add this device to the account';
+    }
   }
 
   Future<void> logOut({String? apiServer}) async {
@@ -199,7 +270,7 @@ class UserModel {
     try {
       body = jsonDecode(decode_http_response(resp));
     } catch (e) {
-      debugPrint("login: jsonDecode resp body failed: ${e.toString()}");
+      debugPrint("Login response could not be decoded: ${e.runtimeType}");
       if (resp.statusCode != 200) {
         BotToast.showText(
             contentColor: Colors.red, text: 'HTTP ${resp.statusCode}');
@@ -211,6 +282,15 @@ class UserModel {
     }
     if (body['error'] != null) {
       throw RequestException(0, body['error']);
+    }
+    return acceptNativeLogin(url, body);
+  }
+
+  Future<LoginResponse> acceptNativeLogin(
+      String url, Map<String, dynamic> body) async {
+    if (body['type'] == HttpType.kAuthResTypeToken &&
+        body['access_token'] is String && body['user'] is Map) {
+      await _applyManagedNetwork(url, body['managed_network']);
     }
 
     return getLoginResponseFromAuthBody(body);

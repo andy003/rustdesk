@@ -5,12 +5,14 @@ pub(super) enum LoginMethod {
     #[default]
     Automatic,
     RequestApproval,
+    ManualPassword,
 }
 
 impl LoginConfigHandler {
     pub(crate) fn set_login_method(&mut self, method: &str) -> bool {
         self.login_method = match method {
             "request-approval" => LoginMethod::RequestApproval,
+            "manual-password" => LoginMethod::ManualPassword,
             _ => return false,
         };
         true
@@ -20,10 +22,19 @@ impl LoginConfigHandler {
         self.login_method != LoginMethod::Automatic
     }
 
+    pub(super) fn requests_approval(&self) -> bool {
+        self.login_method == LoginMethod::RequestApproval
+    }
+
+    pub(super) fn requires_manual_password(&self) -> bool {
+        self.login_method == LoginMethod::ManualPassword
+    }
+
     pub(crate) fn get_login_method(&self) -> &'static str {
         match self.login_method {
             LoginMethod::Automatic => "",
             LoginMethod::RequestApproval => "request-approval",
+            LoginMethod::ManualPassword => "manual-password",
         }
     }
 }
@@ -36,6 +47,7 @@ mod tests {
         config::PeerConfig, protobuf::Message as _, rendezvous_proto::ConnType, tcp::FramedStream,
         tokio, Stream,
     };
+    use sha2::{Digest, Sha256};
 
     async fn connection() -> (Stream, Stream) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -55,6 +67,53 @@ mod tests {
             .login_request()
             .password
             .to_vec()
+    }
+
+    #[tokio::test]
+    async fn managed_connection_waits_for_a_typed_device_password() {
+        let session = Session::<FlutterHandler>::default();
+        {
+            let mut lc = session.lc.write().unwrap();
+            lc.config.password = vec![1; 32];
+            lc.password = vec![2; 32];
+            lc.shared_password = Some("shared password".into());
+            assert!(lc.set_login_method("manual-password"));
+        }
+        let (mut stream, mut peer) = connection().await;
+        let mut trust = Default::default();
+        assert!(
+            client::handle_hash(
+                session.lc.clone(),
+                "preset password",
+                Hash {
+                    salt: "salt".into(),
+                    challenge: "challenge".into(),
+                    ..Default::default()
+                },
+                &session,
+                &mut trust,
+                &mut stream,
+            )
+            .await
+        );
+        assert!(peer.next_timeout(50).await.is_none());
+
+        client::handle_login_from_ui(
+            session.lc.clone(),
+            String::new(),
+            String::new(),
+            "typed device password".into(),
+            false,
+            &mut trust,
+            &mut stream,
+        )
+        .await
+        .unwrap();
+        let mut hash = Sha256::new();
+        hash.update(Sha256::digest(b"typed device passwordsalt"));
+        hash.update(b"challenge");
+        assert_eq!(received_password(&mut peer).await, hash.finalize().to_vec());
+        assert!(session.get_conn_token().is_none());
     }
 
     #[test]

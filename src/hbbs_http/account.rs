@@ -10,6 +10,115 @@ use std::{
 };
 use url::Url;
 
+pub(crate) fn managed_api_server() -> Option<&'static str> {
+    let server = option_env!("RUSTDESK_ACCOUNT_BOOTSTRAP_URL")?.trim_end_matches('/');
+    let url = Url::parse(server).ok()?;
+    (url.scheme() == "https"
+        && url.has_host()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none())
+    .then_some(server)
+}
+
+#[cfg(feature = "flutter")]
+pub(crate) fn apply_managed_network(request: &str) -> ResultType<()> {
+    use base::config::keys;
+    use hbb_common::{bail, config::Config};
+
+    #[derive(Deserialize)]
+    struct ManagedNetwork {
+        id_server: String,
+        relay_server: String,
+        public_key: String,
+    }
+
+    let (source, network): (String, ManagedNetwork) = serde_json::from_str(request)?;
+    if managed_api_server() != Some(source.as_str()) || crate::ui_interface::get_api_server() != source {
+        bail!("Untrusted account server");
+    }
+    let valid_endpoint = |value: &str| {
+        value.is_ascii()
+            && !value.contains(['/', '\\', '?', '#', '@', '%'])
+            && Url::parse(&format!("tcp://{value}"))
+                .is_ok_and(|url| url.has_host() && url.port().is_some_and(|port| port != 0))
+    };
+    if !valid_endpoint(&network.id_server)
+        || !valid_endpoint(&network.relay_server)
+        || !crate::decode64(&network.public_key).is_ok_and(|key| key.len() == 32)
+    {
+        bail!("Invalid managed network configuration");
+    }
+
+    let managed_options = [
+        (keys::OPTION_API_SERVER, source),
+        (keys::OPTION_CUSTOM_RENDEZVOUS_SERVER, network.id_server),
+        (keys::OPTION_RELAY_SERVER, network.relay_server),
+        (keys::OPTION_KEY, network.public_key),
+    ];
+    if managed_options.iter().any(|(key, value)| {
+        crate::ui_interface::is_option_fixed(key) && Config::get_option(key) != *value
+    }) {
+        bail!("Managed network settings are locked by local policy");
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let mut options = crate::ipc::get_options();
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let mut options = Config::get_options();
+    if managed_options.iter().all(|(key, value)| options.get(*key) == Some(value)) {
+        return Ok(());
+    }
+    options.extend(managed_options.into_iter().map(|(key, value)| (key.to_owned(), value)));
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::ipc::set_options(options)?;
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        crate::ui_interface::try_set_options(options)?;
+        crate::rendezvous_mediator::RendezvousMediator::restart();
+    }
+    Ok(())
+}
+
+pub(crate) fn rendezvous_token(token: String) -> String {
+    // The custom account API issues a bearer for its own endpoints. OSS hbbs
+    // does not implement the Pro key exchange used to send account tokens.
+    if serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+        .ok()
+        .and_then(|user| user["api_only_token"].as_bool())
+        == Some(true)
+    {
+        String::new()
+    } else {
+        token
+    }
+}
+
+pub(crate) fn sign_device_binding(challenge: &str) -> ResultType<String> {
+    use hbb_common::{bail, config::Config, sodiumoxide::crypto::sign};
+
+    if challenge.is_empty()
+        || challenge.len() > 512
+        || !challenge.bytes().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.' | b':')
+        })
+    {
+        bail!("Invalid device registration");
+    }
+
+    let Some((secret, _)) = Config::get_existing_key_pair() else {
+        bail!("Device has not registered with the ID server");
+    };
+    let Some(secret) = sign::SecretKey::from_slice(&secret) else {
+        bail!("Invalid device registration");
+    };
+    let mut message = b"rustdesk-account-device-binding-v1\0".to_vec();
+    message.extend_from_slice(challenge.as_bytes());
+    Ok(hex::encode(
+        sign::sign_detached(&message, &secret).to_bytes(),
+    ))
+}
+
 lazy_static::lazy_static! {
     static ref OIDC_SESSION: Arc<RwLock<OidcSession>> = Arc::new(RwLock::new(OidcSession::new()));
 }

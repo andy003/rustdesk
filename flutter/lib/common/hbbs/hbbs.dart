@@ -32,6 +32,9 @@ class UserPayload {
   String? verifier;
   UserStatus status;
   bool isAdmin = false;
+  final bool requireDevicePassword;
+  final bool deviceBinding;
+  final bool apiOnlyToken;
 
   UserPayload.fromJson(Map<String, dynamic> json)
       : name = json['name'] ?? '',
@@ -45,13 +48,19 @@ class UserPayload {
             : json['status'] == -1
                 ? UserStatus.kUnverified
                 : UserStatus.kNormal,
-        isAdmin = json['is_admin'] == true;
+        isAdmin = json['is_admin'] == true,
+        requireDevicePassword = json['require_device_password'] == true,
+        deviceBinding = json['device_binding'] == true,
+        apiOnlyToken = json['api_only_token'] == true;
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> map = {
       'name': name,
       'display_name': displayName,
       'avatar': avatar,
+      if (requireDevicePassword) 'require_device_password': true,
+      if (deviceBinding) 'device_binding': true,
+      if (apiOnlyToken) 'api_only_token': true,
       'status': status == UserStatus.kDisabled
           ? 0
           : status == UserStatus.kUnverified

@@ -27,6 +27,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../common/widgets/dialog.dart';
 import '../../common/widgets/login.dart';
+import '../../common/widgets/wechat_auth.dart';
 
 const double _kTabWidth = 200;
 const double _kTabHeight = 42;
@@ -2271,95 +2272,118 @@ class _DisplayState extends State<_Display> {
   }
 }
 
-class _Account extends StatefulWidget {
+class _Account extends StatelessWidget {
   const _Account({Key? key}) : super(key: key);
 
   @override
-  State<_Account> createState() => _AccountState();
-}
-
-class _AccountState extends State<_Account> {
-  @override
   Widget build(BuildContext context) {
-    final scrollController = ScrollController();
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final user = gFFI.userModel;
+    final fallback = CircleAvatar(
+      radius: 24,
+      backgroundColor: colors.primary.withOpacity(0.14),
+      foregroundColor: colors.primary,
+      child: const Icon(Icons.person_outline_rounded, size: 25),
+    );
+
     return ListView(
-      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
       children: [
-        _Card(title: 'Account', children: [accountAction(), useInfo()]),
-      ],
-    ).marginOnly(bottom: _kListViewBottomMargin);
-  }
-
-  Widget accountAction() {
-    return Obx(() => _Button(
-        gFFI.userModel.userName.value.isEmpty
-            ? 'Login'
-            : '${translate('Logout')} (${gFFI.userModel.accountLabelWithHandle})',
-        () => {
-              gFFI.userModel.userName.value.isEmpty
-                  ? loginDialog()
-                  : logOutConfirmDialog()
-            }));
-  }
-
-  Widget useInfo() {
-    return Obx(() => Offstage(
-          offstage: gFFI.userModel.userName.value.isEmpty,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Builder(builder: (context) {
-              final avatarWidget = _buildUserAvatar();
-              return Row(
-                children: [
-                  if (avatarWidget != null) avatarWidget,
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          gFFI.userModel.displayNameOrUserName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        SelectionArea(
-                          child: Text(
-                            '@${gFFI.userModel.userName.value}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color:
-                                  Theme.of(context).textTheme.bodySmall?.color,
-                            ),
-                          ),
-                        ),
-                      ],
+        Text(
+          translate('Account'),
+          style: theme.textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 16),
+        Obx(() {
+          final signedIn = user.isLogin;
+          final avatar = signedIn
+              ? buildAvatarWidget(
+                  avatar: bind.mainResolveAvatarUrl(avatar: user.avatar.value),
+                  size: 48,
+                  fallback: fallback,
+                )
+              : fallback;
+          final identity = Row(
+            children: [
+              avatar ?? fallback,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      signedIn
+                          ? user.displayNameOrUserName
+                          : translate('Sign in'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
-                  ),
-                ],
-              );
-            }),
-          ),
-        )).marginOnly(left: 18, top: 16);
-  }
-
-  Widget? _buildUserAvatar() {
-    // Resolve relative avatar path at display time
-    final avatar =
-        bind.mainResolveAvatarUrl(avatar: gFFI.userModel.avatar.value);
-    return buildAvatarWidget(
-      avatar: avatar,
-      size: 44,
+                    if (signedIn || !bind.isDisableGroupPanel()) ...[
+                      const SizedBox(height: 4),
+                      SelectionArea(
+                        child: Text(
+                          signedIn
+                              ? '@${user.userName.value}'
+                              : translate('Sign in to see your devices'),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+          final action = signedIn
+              ? OutlinedButton.icon(
+                  onPressed: logOutConfirmDialog,
+                  icon: const Icon(Icons.logout_rounded, size: 17),
+                  label: Text(translate('Logout')),
+                )
+              : FilledButton.icon(
+                  onPressed: loginDialog,
+                  icon: const Icon(Icons.login_rounded, size: 17),
+                  label: Text(translate('Login')),
+                );
+          return Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHighest.withOpacity(0.48),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colors.outlineVariant.withOpacity(0.55)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LayoutBuilder(
+                  builder: (_, limits) => limits.maxWidth < 340
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            identity,
+                            const SizedBox(height: 14),
+                            action,
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(child: identity),
+                            const SizedBox(width: 16),
+                            action,
+                          ],
+                        ),
+                ),
+                if (signedIn) const WechatAuthButton.link(),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 }

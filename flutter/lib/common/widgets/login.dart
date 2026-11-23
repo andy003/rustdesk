@@ -14,6 +14,7 @@ import '../../common.dart';
 import '../../consts.dart';
 import './dialog.dart';
 import './oidc_auth_status.dart';
+import './wechat_auth.dart';
 
 const kOpSvgList = [
   'github',
@@ -652,6 +653,10 @@ class LoginWidgetUserPass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final submit = Obx(() => ElevatedButton(
+          onPressed: curOP.value.isEmpty && !isInProgress ? onLogin : null,
+          child: Text(translate('Login'), style: const TextStyle(fontSize: 16)),
+        ));
     return Padding(
         padding: EdgeInsets.all(0),
         child: Column(
@@ -672,29 +677,61 @@ class LoginWidgetUserPass extends StatelessWidget {
             ),
             // NOT use Offstage to wrap LinearProgressIndicator
             if (isInProgress) const LinearProgressIndicator(),
-            const SizedBox(height: 12.0),
-            FittedBox(
-                child:
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Container(
-                height: 38,
-                width: 200,
-                child: Obx(() => ElevatedButton(
-                      child: Text(
-                        translate('Login'),
-                        style: TextStyle(fontSize: 16),
-                      ),
-                      onPressed: curOP.value.isEmpty && !isInProgress
-                          ? () {
-                              onLogin();
-                            }
-                          : null,
-                    )),
-              ),
-            ])),
+            SizedBox(height: isDesktop ? 16 : 12),
+            if (isDesktop)
+              SizedBox(width: double.infinity, height: 44, child: submit)
+            else
+              FittedBox(child: SizedBox(height: 38, width: 200, child: submit)),
           ],
         ));
   }
+}
+
+Widget _desktopSignInTitle(BuildContext context, VoidCallback close) {
+  final theme = Theme.of(context);
+  final colors = theme.colorScheme;
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Container(
+        width: 43,
+        height: 43,
+        decoration: BoxDecoration(
+          color: colors.primary.withOpacity(0.13),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child:
+            Icon(Icons.person_outline_rounded, size: 24, color: colors.primary),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              translate('Sign in'),
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            if (!bind.isDisableGroupPanel()) ...[
+              const SizedBox(height: 4),
+              Text(
+                translate('Sign in to see your devices'),
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ],
+          ],
+        ),
+      ),
+      IconButton(
+        onPressed: close,
+        tooltip: translate('Close'),
+        visualDensity: VisualDensity.compact,
+        icon: const Icon(Icons.close_rounded, size: 21),
+      ),
+    ],
+  );
 }
 
 const kAuthReqTypeOidc = 'oidc/';
@@ -981,15 +1018,17 @@ Future<bool?> _openLoginDialog() async {
     final titlePadding = EdgeInsets.fromLTRB(MyTheme.dialogPadding, 0, 0, 0);
 
     return CustomAlertDialog(
-      title: title,
-      titlePadding: titlePadding,
-      contentBoxConstraints: BoxConstraints(minWidth: 400),
+      title: isDesktop ? _desktopSignInTitle(context, onDialogCancel) : title,
+      titlePadding: isDesktop
+          ? const EdgeInsets.fromLTRB(24, 23, 16, 6)
+          : titlePadding,
+      contentBoxConstraints: isDesktop
+          ? const BoxConstraints(minWidth: 360, maxWidth: 360)
+          : const BoxConstraints(minWidth: 400),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const SizedBox(
-            height: 8.0,
-          ),
+          if (!isDesktop) const SizedBox(height: 8),
           if (!hideAccountPasswordLogin)
             LoginWidgetUserPass(
               username: username,
@@ -1002,6 +1041,13 @@ Future<bool?> _openLoginDialog() async {
               userFocusNode: userFocusNode,
             ),
           thirdAuthWidget(),
+          WechatAuthButton.signIn(
+            enabled: !isInProgress,
+            onSignedIn: (server, body) async {
+              final result = await gFFI.userModel.acceptNativeLogin(server, body);
+              await handleLoginResponse(result, true, close);
+            },
+          ),
         ],
       ),
       onCancel: onDialogCancel,

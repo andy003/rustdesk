@@ -9,10 +9,12 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/animated_rotation_widget.dart';
 import 'package:flutter_hbb/common/widgets/custom_password.dart';
 import 'package:flutter_hbb/consts.dart';
+import 'package:flutter_hbb/desktop/pages/account_devices_page.dart';
 import 'package:flutter_hbb/desktop/pages/connection_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
 import 'package:flutter_hbb/desktop/widgets/update_progress.dart';
+import 'package:flutter_hbb/desktop/widgets/workspace_account_button.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -54,6 +56,10 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   final RxBool _block = false.obs;
 
   final GlobalKey _childKey = GlobalKey();
+  bool _showDevices = false;
+
+  bool get _hasDevicesPage => !bind.isIncomingOnly() &&
+      !bind.isDisableAccount() && !bind.isDisableGroupPanel();
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +71,18 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       children: [
         buildLeftPane(context),
         if (!isIncomingOnly) const VerticalDivider(width: 1),
-        if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+        if (!isIncomingOnly)
+          Expanded(
+            child: _hasDevicesPage
+                ? IndexedStack(
+                    index: _showDevices ? 1 : 0,
+                    children: [
+                      buildRightPane(context),
+                      const AccountDevicesPage(),
+                    ],
+                  )
+                : buildRightPane(context),
+          ),
       ],
     ));
   }
@@ -78,7 +95,10 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   Widget buildLeftPane(BuildContext context) {
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
+    final workspace = _hasDevicesPage;
+    final showLocalDesktop = !workspace || !_showDevices;
     final children = <Widget>[
+      if (workspace && !bind.isCustomClient()) _buildWorkspaceBrand(context),
       if (!isOutgoingOnly) buildPresetPasswordWarning(),
       if (bind.isCustomClient())
         Align(
@@ -89,27 +109,35 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         alignment: Alignment.center,
         child: loadLogo(),
       ),
-      buildTip(context),
-      if (!isOutgoingOnly) buildIDBoard(context),
-      if (!isOutgoingOnly) buildPasswordBoard(context),
-      FutureBuilder<Widget>(
-        future: Future.value(
-            Obx(() => buildHelpCards(stateGlobal.updateUrl.value))),
-        builder: (_, data) {
-          if (data.hasData) {
-            if (isIncomingOnly) {
-              if (isInHomePage()) {
-                Future.delayed(Duration(milliseconds: 300), () {
-                  _updateWindowSize();
-                });
+      if (!isIncomingOnly && !bind.isDisableAccount())
+        WorkspaceAccountButton(
+          openSettings: bind.isDisableSettings()
+              ? null
+              : () => DesktopSettingPage.switch2page(SettingsTabKey.account),
+        ),
+      if (workspace) _buildNavigation(),
+      if (showLocalDesktop) buildTip(context),
+      if (showLocalDesktop && !isOutgoingOnly) buildIDBoard(context),
+      if (showLocalDesktop && !isOutgoingOnly) buildPasswordBoard(context),
+      if (showLocalDesktop)
+        FutureBuilder<Widget>(
+          future: Future.value(
+              Obx(() => buildHelpCards(stateGlobal.updateUrl.value))),
+          builder: (_, data) {
+            if (data.hasData) {
+              if (isIncomingOnly) {
+                if (isInHomePage()) {
+                  Future.delayed(Duration(milliseconds: 300), () {
+                    _updateWindowSize();
+                  });
+                }
               }
+              return data.data!;
+            } else {
+              return const Offstage();
             }
-            return data.data!;
-          } else {
-            return const Offstage();
-          }
-        },
-      ),
+          },
+        ),
     ];
     if (isIncomingOnly) {
       children.addAll([
@@ -125,55 +153,141 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ).marginOnly(bottom: 6, right: 6)
       ]);
     }
-    final textColor = Theme.of(context).textTheme.titleLarge?.color;
+    final theme = Theme.of(context);
+    final textColor = theme.textTheme.titleLarge?.color;
+    final scrollPane = SingleChildScrollView(
+      controller: _leftPaneScrollController,
+      child: Column(key: _childKey, children: children),
+    );
     return ChangeNotifierProvider.value(
       value: gFFI.serverModel,
       child: Container(
-        width: isIncomingOnly ? 280.0 : 200.0,
-        color: Theme.of(context).colorScheme.background,
-        child: Stack(
-          children: [
-            Column(
-              children: [
-                SingleChildScrollView(
-                  controller: _leftPaneScrollController,
-                  child: Column(
-                    key: _childKey,
-                    children: children,
-                  ),
-                ),
-                Expanded(child: Container())
-              ],
-            ),
-            if (isOutgoingOnly)
-              Positioned(
-                bottom: 6,
-                left: 12,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: InkWell(
-                    child: Obx(
-                      () => Icon(
-                        Icons.settings,
-                        color: _editHover.value
-                            ? textColor
-                            : Colors.grey.withOpacity(0.5),
-                        size: 22,
-                      ),
-                    ),
-                    onTap: () => {
-                      if (DesktopSettingPage.tabKeys.isNotEmpty)
-                        {
-                          DesktopSettingPage.switch2page(
-                              DesktopSettingPage.tabKeys[0])
-                        }
-                    },
-                    onHover: (value) => _editHover.value = value,
-                  ),
-                ),
+        width: isIncomingOnly ? 280.0 : (workspace ? 208.0 : 200.0),
+        color: workspace
+            ? Color.alphaBlend(theme.colorScheme.primary.withOpacity(0.045),
+                theme.scaffoldBackgroundColor)
+            : theme.colorScheme.background,
+        child: workspace
+            ? Column(
+                children: [
+                  Expanded(child: scrollPane),
+                  if (!bind.isDisableSettings()) _buildWorkspaceSettings(),
+                ],
               )
+            : Stack(
+                children: [
+                  Column(
+                    children: [scrollPane, Expanded(child: Container())],
+                  ),
+                  if (isOutgoingOnly)
+                    Positioned(
+                      bottom: 6,
+                      left: 12,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: InkWell(
+                          child: Obx(
+                            () => Icon(
+                              Icons.settings,
+                              color: _editHover.value
+                                  ? textColor
+                                  : Colors.grey.withOpacity(0.5),
+                              size: 22,
+                            ),
+                          ),
+                          onTap: () => {
+                            if (DesktopSettingPage.tabKeys.isNotEmpty)
+                              {
+                                DesktopSettingPage.switch2page(
+                                    DesktopSettingPage.tabKeys[0])
+                              }
+                          },
+                          onHover: (value) => _editHover.value = value,
+                        ),
+                      ),
+                    )
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildWorkspaceBrand(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 19, 18, 14),
+      child: Row(
+        children: [
+          loadIcon(27),
+          const SizedBox(width: 10),
+          Text('RustDesk',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavigation() {
+    Widget item(String title, IconData icon, bool devices) => ListTile(
+          leading: Icon(icon, size: 20),
+          title: Text(translate(title),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontWeight: _showDevices == devices
+                      ? FontWeight.w600
+                      : FontWeight.w500)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          horizontalTitleGap: 10,
+          minLeadingWidth: 20,
+          dense: true,
+          selected: _showDevices == devices,
+          selectedTileColor:
+              Theme.of(context).colorScheme.primary.withOpacity(0.12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          onTap: () {
+            if (_showDevices == devices) return;
+            setState(() => _showDevices = devices);
+            if (devices) gFFI.userModel.refreshCurrentUser();
+          },
+        );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          children: [
+            item('Remote assistance', Icons.swap_horiz_rounded, false),
+            const SizedBox(height: 3),
+            item('Devices', Icons.devices_outlined, true),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildWorkspaceSettings() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: Column(
+        children: [
+          const Divider(height: 12),
+          Material(
+            color: Colors.transparent,
+            child: ListTile(
+              leading: const Icon(Icons.settings_outlined, size: 20),
+              title: Text(translate('Settings')),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              minLeadingWidth: 20,
+              horizontalTitleGap: 10,
+              dense: true,
+              onTap: DesktopTabPage.onAddSetting,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -220,7 +334,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                                   ?.color
                                   ?.withOpacity(0.5)),
                         ).marginOnly(top: 5),
-                        buildPopupMenu(context)
+                        if (!_hasDevicesPage) buildPopupMenu(context)
                       ],
                     ),
                   ),

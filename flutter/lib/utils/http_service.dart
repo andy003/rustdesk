@@ -8,6 +8,9 @@ export 'package:http/http.dart' show Response;
 
 enum HttpMethod { get, post, put, delete }
 
+String get managedAccountServer =>
+    isWeb ? '' : bind.mainGetCommonSync(key: 'managed-account-server');
+
 class HttpService {
   Future<http.Response> sendRequest(
     Uri url,
@@ -16,6 +19,23 @@ class HttpService {
     dynamic body,
   }) async {
     headers ??= {'Content-Type': 'application/json'};
+    final managedServer = managedAccountServer;
+    if (managedServer.isNotEmpty &&
+        url.toString().startsWith('$managedServer/api/')) {
+      final client = http.Client();
+      try {
+        final request = http.Request(method.name.toUpperCase(), url)
+          ..followRedirects = false
+          ..headers.addAll(headers);
+        if (body is String) request.body = body;
+        return await client
+            .send(request)
+            .then(http.Response.fromStream)
+            .timeout(_requestTimeout);
+      } finally {
+        client.close();
+      }
+    }
 
     // Use Rust HTTP implementation for non-web platforms for consistency.
     var useFlutterHttp = (isWeb || kIsWeb);

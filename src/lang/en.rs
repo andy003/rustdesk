@@ -293,5 +293,16 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("android-logs-folder-tip", "Choose Android → media to store log files."),
         ("install-directory-not-empty-tip", "The selected folder is not empty. Installation may delete existing data. Consider choosing a different folder."),
         ("username-login-disabled-oidc-unavailable", "Username and password login is disabled, and no OIDC login methods are available."),
+        ("Sign in with WeChat", ""),
+        ("Link WeChat", ""),
+        ("Scan with WeChat in your browser", ""),
+        ("Open in browser", ""),
+        ("WeChat linked", ""),
+        ("WeChat authorization failed", ""),
+        ("WeChat sign-in is unavailable", ""),
+        ("Link WeChat to a client account first", ""),
+        ("WeChat is already linked to an account", ""),
+        ("WeChat request expired", ""),
+        ("Sign in", ""),
     ].iter().cloned().collect();
 }

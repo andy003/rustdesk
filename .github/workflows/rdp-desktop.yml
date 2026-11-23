@@ -2,6 +2,8 @@ name: RDP desktop builds
 
 on:
   push:
+    branches-ignore:
+      - codex/ccros-desktop
     paths:
       - ".github/workflows/rdp-desktop.yml"
       - ".github/workflows/flutter-build.yml"

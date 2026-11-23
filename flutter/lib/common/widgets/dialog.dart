@@ -972,7 +972,12 @@ _connectDialog(
 }) async {
   final errUsername = ''.obs;
   var rememberPassword = false;
-  if (passwordController != null) {
+  final canRememberPassword = passwordController != null &&
+      (isWeb ||
+          bind.sessionGetCommonSync(
+                  sessionId: sessionId, key: 'login_method', param: '') !=
+              kLoginMethodManualPassword);
+  if (canRememberPassword) {
     rememberPassword =
         await bind.sessionGetRemember(sessionId: sessionId) ?? false;
   }
@@ -1103,15 +1108,16 @@ _connectDialog(
             controller: passwordController,
             autoFocus: osUsernameController == null,
           ),
-          rememberWidget(
-            translate('Remember password'),
-            rememberPassword,
-            (v) {
-              if (v != null) {
-                setState(() => rememberPassword = v);
-              }
-            },
-          ),
+          if (canRememberPassword)
+            rememberWidget(
+              translate('Remember password'),
+              rememberPassword,
+              (v) {
+                if (v != null) {
+                  setState(() => rememberPassword = v);
+                }
+              },
+            ),
         ],
       );
     }

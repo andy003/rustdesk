@@ -2765,7 +2765,19 @@ pub fn main_get_printer_names() -> SyncReturn<String> {
 }
 
 pub fn main_get_common(key: String) -> String {
-    if key == "is-printer-installed" {
+    if key == "managed-account-server" {
+        return crate::hbbs_http::account::managed_api_server().unwrap_or_default().to_owned();
+    } else if let Some(settings) = key.strip_prefix("apply-managed-network:") {
+        return match crate::hbbs_http::account::apply_managed_network(settings) {
+            Ok(()) => String::new(),
+            Err(error) => error.to_string(),
+        };
+    } else if let Some(challenge) = key.strip_prefix("sign-account-device:") {
+        return match crate::hbbs_http::account::sign_device_binding(challenge) {
+            Ok(proof) => proof,
+            Err(error) => format!("error:{error}"),
+        };
+    } else if key == "is-printer-installed" {
         #[cfg(target_os = "windows")]
         {
             return match remote_printer::is_rd_printer_installed(&get_app_name()) {

@@ -593,7 +593,9 @@ abstract class BasePeerCard extends StatelessWidget {
       menuItems.add(_rdpAction(context, peer.id));
     }
     menuItems.add(MenuEntryDivider<String>());
-    menuItems.add(_requestApprovalAction(context));
+    if (!_requiresDevicePassword(tab)) {
+      menuItems.add(_requestApprovalAction(context));
+    }
     // menuItems.add(await _openNewConnInOptAction(peer.id));
     if (!isWeb) {
       menuItems.add(await _forceAlwaysRelayAction(peer.id));
@@ -1564,6 +1566,11 @@ class TagPainter extends CustomPainter {
   }
 }
 
+bool _requiresDevicePassword(PeerTabIndex tab) =>
+    !isWeb &&
+    tab == PeerTabIndex.group &&
+    gFFI.userModel.requireDevicePassword;
+
 void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     {bool isFileTransfer = false,
     bool isViewCamera = false,
@@ -1598,7 +1605,9 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
     }
   }
   connect(context, peer.id,
-      loginMethod: loginMethod,
+      loginMethod: _requiresDevicePassword(tab)
+          ? kLoginMethodManualPassword
+          : loginMethod,
       password: password,
       isSharedPassword: isSharedPassword,
       isFileTransfer: isFileTransfer,

@@ -1,0 +1,29 @@
+[Unit]
+Description=RustDesk account and device administration
+After=network.target rustdesk-web-registry.service
+Wants=rustdesk-web-registry.timer
+
+[Service]
+User=rustdesk-web
+Group=rustdesk-web
+EnvironmentFile=/etc/rustdesk-web/settings.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/opt/rustdesk-web/app
+ExecStart=/opt/rustdesk-web-venv/bin/python -m gunicorn --bind 127.0.0.1:18761 --workers 2 --threads 2 --timeout 20 --forwarded-allow-ips=127.0.0.1 device_portal.wsgi:application
+StateDirectory=rustdesk-web
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
